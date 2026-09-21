@@ -1,10 +1,10 @@
-const API_URL = "http://localhost:3000";
+const API_URL = "http://localhost:3000"; 
 
 let tooltip = null;
 let selectedText = "";
 let currentSaveId = null;
 
-// Check if current page is saved in shellai
+// Check if current page is saved in Memora
 async function checkIfSaved() { 
   try {
     const res = await fetch(
@@ -23,10 +23,10 @@ async function checkIfSaved() {
 // Create tooltip element 
 function createTooltip() {
   const el = document.createElement("div");
-  el.id = "shellai-highlight-tooltip";
+  el.id = "memora-highlight-tooltip";
   el.innerHTML = `
-    <span class="shellai-icon">◈</span>
-    <span class="shellai-label">Save highlight</span>
+    <span class="memora-icon">◈</span>
+    <span class="memora-label">Save highlight</span>
   `;
   el.style.cssText = `
     position: fixed;
@@ -98,7 +98,7 @@ function hideTooltip() {
 // Save the highlight
 async function saveHighlight() {
   if (!selectedText || !currentSaveId) {
-    showFeedback("Save this page first in shellai", "error");
+    showFeedback("Save this page first in ShellAI", "error");
     hideTooltip();
     return;
   }
@@ -115,7 +115,7 @@ async function saveHighlight() {
     });
 
     if (res.status === 401) {
-      showFeedback("Sign in to shellai first", "error"); 
+      showFeedback("Sign in to ShellAI first", "error"); 
       resetTooltip();
       return;
     }
@@ -134,8 +134,8 @@ async function saveHighlight() {
 function resetTooltip() {
   if (tooltip) {
     tooltip.innerHTML = `
-      <span class="shellai-icon">◈</span>
-      <span class="shellai-label">Save highlight</span>
+      <span class="memora-icon">◈</span>
+      <span class="memora-label">Save highlight</span>
     `;
     hideTooltip();
   }
@@ -158,15 +158,15 @@ function showFeedback(message, type) {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-weight: 500;
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-    animation: shellai-fade-in 0.2s ease;
+    animation: memora-fade-in 0.2s ease;
   `;
 
   // Inject keyframe
-  if (!document.getElementById("shellai-styles")) {
+  if (!document.getElementById("memora-styles")) {
     const style = document.createElement("style");
-    style.id = "shellai-styles";
+    style.id = "memora-styles";
     style.textContent = `
-      @keyframes shellai-fade-in {
+      @keyframes memora-fade-in {
         from { opacity: 0; transform: translateY(8px); }
         to   { opacity: 1; transform: translateY(0); }
       }

@@ -1,5 +1,5 @@
-const APP_URL = "http://localhost:3000"
-const API_URL = "http://localhost:3000"
+const API_URL = "http://localhost:3000";
+const APP_URL = "http://localhost:3000";
 
 let existingSaveId = null;
 let update = false;
@@ -131,7 +131,7 @@ document.getElementById("save-btn").addEventListener("click", async () => {
     showScreen("saved");
   } catch (err) {
     btn.disabled = false;
-    btn.textContent = "Save to Memora";
+    btn.textContent = "Save to ShellAI";
     document.getElementById("error-msg").classList.remove("hidden");
   } finally {
     update = false;
