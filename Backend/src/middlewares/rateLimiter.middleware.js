@@ -8,6 +8,8 @@ const createLimiter = ({ windowMs, max, message }) =>
     standardHeaders: true,
     legacyHeaders: false,
 
+    skip: () => process.env.NODE_ENV === "development",
+
     keyGenerator: (req) => {
       const ip = ipKeyGenerator(req);
       return req.user ? `${req.user.id}-${ip}` : ip;
