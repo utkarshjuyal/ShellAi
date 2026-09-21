@@ -1,0 +1,79 @@
+@use "./variables" as *;
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: $font-body;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  transition: background 0.4s ease, color 0.4s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: 4px;
+}
+
+:root {
+  /* Variables to maintain your design system consistency */
+  --neutral-500: #737373;
+  --neutral-900: #171717;
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.back-landing {
+  position: absolute;
+  top: 2rem;
+  left: 2rem;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem; /* gap-2 */
+  font-size: 0.875rem; /* text-sm */
+  font-weight: 500; /* font-medium */
+  color: var(--neutral-500);
+  transition: color 0.4s var(--ease-smooth); /* transition-colors */
+  cursor: pointer;
+  text-decoration: none;
+}
+
+/* Hover state for Light Theme */
+.back-landing:hover {
+  color: white
+}
+
+/* Hover state for Dark Theme */
+.dark .back-landing:hover {
+  color: #ffffff;
+}
+
+.back-landing-icon {
+  width: 1rem; /* w-4 */
+  height: 1rem; /* h-4 */
+  transition: transform 0.4s var(--ease-smooth); /* transition-transform */
+}
+ 
+.back-landing:hover .back-landing-icon {
+  transform: translateX(-0.25rem); /* -translate-x-1 */
+}
