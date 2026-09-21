@@ -54,11 +54,12 @@ async function checkSaved(url) {
 
   console.log("CHECK_SAVED response:", response.status, data);
 
-  return {
+   return {
     ok: response.ok,
     status: response.status,
     exists: data.exists === true,
-    id: data.id || null,
+    // <-- UPDATE THIS: Fallback to _id or saveId if the backend uses Mongoose defaults
+    id: data.id || data._id || data.saveId || null,
     savedAgo: data.savedAgo || null,
     data,
   };
@@ -78,19 +79,16 @@ async function saveHighlight(saveId, highlightedText) {
     };
   }
 
-  const response = await fetch(
-    `${API_URL}/api/highlights/${saveId}`,
-    {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        highlightedText,
-      }),
+  const response = await fetch(`${API_URL}/api/highlights/${saveId}`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      highlightedText,
+    }),
+  });
 
   const text = await response.text();
 

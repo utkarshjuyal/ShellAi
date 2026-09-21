@@ -2,34 +2,34 @@ const API_URL = "http://localhost:3000";
 
 let tooltip = null;
 let selectedText = "";
-let currentSaveId = null;
 
-// Check if current page is saved in Memora
-async function checkIfSaved() {
+// Helper to get clean URL (removes hash fragments which are never sent to the server)
+function getCleanUrl() {
+  return window.location.href.split('#')[0];
+}
+
+// Dynamically check if current page is saved at the time of highlighting
+async function getSaveIdForCurrentUrl() { 
   try {
-    const response = await chrome.runtime.sendMessage({
-      type: "CHECK_SAVED",
-      url: window.location.href,
-    });
-
-    console.log("Save check result:", response);
-
-    if (response?.ok && response.exists && response.id) {
-      currentSaveId = response.id;
-
-      console.log(
-        "Current page is saved. Save ID:",
-        currentSaveId,
-      );
-    } else {
-      currentSaveId = null;
-
-      console.log("Current page is not saved.");
+    const cleanUrl = getCleanUrl();
+    const res = await fetch(
+      `${API_URL}/api/saves/exists?url=${encodeURIComponent(cleanUrl)}`,
+      { credentials: "include" },
+    );
+    
+    if (res.status === 401) {
+      showFeedback("Please sign in to ShellAI", "error");
+      return null;
     }
-  } catch (error) {
-    currentSaveId = null;
 
-    console.error("Failed to check saved page:", error);
+    const data = await res.json();
+    if (data.exists) {
+      return data.id;
+    }
+    return null;
+  } catch (err) {
+    console.error("Failed to check if saved:", err);
+    return null;
   }
 }
 
@@ -42,17 +42,17 @@ function createTooltip() {
     <span class="memora-label">Save highlight</span>
   `;
   el.style.cssText = `
-    position: fixed;
-    z-index: 999999;
+    position: fixed !important;
+    z-index: 2147483647 !important; /* Max possible z-index to beat website CSS */
     background: #1a1815;
     color: #ede9e3;
-    padding: 6px 12px;
+    padding: 8px 14px;
     border-radius: 8px;
-    font-size: 12px;
+    font-size: 13px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-weight: 500;
     cursor: pointer;
-    display: flex;
+    display: none; /* Hidden by default */
     align-items: center;
     gap: 6px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
@@ -78,21 +78,16 @@ function showHighlightTooltip(text, x, y) {
 
   selectedText = text;
   tooltip.style.display = "flex";
+  
+  // Force browser reflow to ensure display: flex is applied before opacity transition
+  void tooltip.offsetWidth; 
   tooltip.style.opacity = "1";
 
   const tooltipWidth = 140;
-  const tooltipHeight = 36;
-
-  // Position above selection, but flip below if too close to top
-  const top =
-    y - 44 < 10
-      ? y + 16 // show below if near top of screen
-      : y - 44; // show above normally
-
-  const left = Math.min(
-    Math.max(10, x - tooltipWidth / 2),
-    window.innerWidth - tooltipWidth - 10,
-  );
+  
+  // Position above selection, but flip below if too close to top of screen
+  const top = y - 50 < 10 ? y + 20 : y - 50;
+  const left = Math.min(Math.max(10, x - tooltipWidth / 2), window.innerWidth - tooltipWidth - 10);
 
   tooltip.style.left = `${left}px`;
   tooltip.style.top = `${top}px`;
@@ -111,9 +106,17 @@ function hideTooltip() {
 // Save the highlight
 async function saveHighlight() {
   if (!selectedText) {
+    showFeedback("No text selected", "error");
+    hideTooltip();
     return;
   }
 
+  // Show checking state immediately
+  if (tooltip) tooltip.innerHTML = `<span>Checking...</span>`;
+
+  // Dynamically fetch the save ID at the time of highlighting
+  const currentSaveId = await getSaveIdForCurrentUrl();
+  
   if (!currentSaveId) {
     showFeedback("Save this page first in ShellAI", "error");
     hideTooltip();
@@ -121,36 +124,28 @@ async function saveHighlight() {
   }
 
   try {
-    tooltip.innerHTML = `<span>Saving...</span>`;
+    if (tooltip) tooltip.innerHTML = `<span>Saving...</span>`;
 
-    const response = await chrome.runtime.sendMessage({
-      type: "SAVE_HIGHLIGHT",
-      saveId: currentSaveId,
-      highlightedText: selectedText,
+    const res = await fetch(`${API_URL}/api/highlights/${currentSaveId}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ highlightedText: selectedText }),
     });
 
-    console.log("Highlight result:", response);
-
-    if (!response?.ok) {
-      if (response?.status === 401) {
-        showFeedback("Sign in to ShellAI first", "error");
-      } else {
-        showFeedback(
-          response?.data?.message || "Failed to save highlight",
-          "error",
-        );
-      }
-
+    if (res.status === 401) {
+      showFeedback("Sign in to ShellAI first", "error"); 
       resetTooltip();
       return;
     }
 
-    showFeedback("Highlight saved ✓", "success");
-    resetTooltip();
-  } catch (error) {
-    console.error("Highlight error:", error);
+    if (!res.ok) throw new Error("Failed");
 
-    showFeedback("Failed to save highlight", "error");
+    showFeedback("Highlight saved ✓", "success"); 
+     resetTooltip();
+  } catch (err) {
+    console.error("Highlight save error:", err);
+    showFeedback("Failed to save highlight", "error"); 
     resetTooltip();
   }
 }
@@ -168,25 +163,29 @@ function resetTooltip() {
 
 // Feedback toast
 function showFeedback(message, type) {
+  // Remove existing toasts to prevent stacking
+  const existing = document.querySelector(".memora-toast");
+  if (existing) existing.remove();
+
   const toast = document.createElement("div");
+  toast.className = "memora-toast";
   toast.textContent = message;
   toast.style.cssText = `
-    position: fixed;
+    position: fixed !important;
     bottom: 24px;
     right: 24px;
-    z-index: 999999;
+    z-index: 2147483647 !important;
     background: ${type === "success" ? "#1a7a45" : "#c0392b"};
     color: #fff;
-    padding: 10px 16px;
+    padding: 12px 18px;
     border-radius: 8px;
-    font-size: 12px;
+    font-size: 13px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-weight: 500;
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     animation: memora-fade-in 0.2s ease;
   `;
 
-  // Inject keyframe
   if (!document.getElementById("memora-styles")) {
     const style = document.createElement("style");
     style.id = "memora-styles";
@@ -207,12 +206,13 @@ function showFeedback(message, type) {
 document.addEventListener("mouseup", (e) => {
   setTimeout(() => {
     const selected = window.getSelection().toString().trim();
-    if (selected.length > 10) {
+    // CHANGED: Lowered from > 10 to > 3 so short selections still trigger it for testing
+    if (selected.length > 3) {
       showHighlightTooltip(selected, e.clientX, e.clientY);
     } else {
       hideTooltip();
     }
-  }, 10); // slight delay so selection is complete
+  }, 10);
 });
 
 // Hide tooltip when clicking elsewhere
@@ -221,6 +221,3 @@ document.addEventListener("mousedown", (e) => {
     hideTooltip();
   }
 });
-
-// Init
-checkIfSaved();

@@ -78,7 +78,11 @@ chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
 // Save button
 document.getElementById("save-btn").addEventListener("click", async () => {
   const title = document.getElementById("page-title").value.trim();
-  const url = document.getElementById("page-url").value.trim();
+  const rawUrl = document.getElementById("page-url").value.trim();
+  
+  // Normalize URL to match backend logic
+  const cleanUrl = rawUrl.split('#')[0].replace(/\/$/, '');
+  
   const note = document.getElementById("note").value.trim();
   const tags = document
     .getElementById("tags")

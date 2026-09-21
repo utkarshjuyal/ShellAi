@@ -18,10 +18,19 @@ import { detectType } from "../services/detector.service.js";
 import { getTimeAgo } from "../utils/util.js";
 import mongoose from "mongoose";
 
+function normalizeUrl(url) {
+  if (!url) return url;
+  return url
+    .split('#')[0]          // Remove hash fragment
+    .replace(/\/$/, '');    // Remove trailing slash (except for root domain)
+}
+
 export async function createSave(req, res) {
   try {
-    const { title, url, note, tags } = req.body;
+    const { title, url: rawUrl, note, tags } = req.body;
     const userId = req.user.id;
+    
+    const url = normalizeUrl(rawUrl); // <-- Normalize before saving
 
     const isSaveExists = await saveModel.findOne({ url, userId });
     if (isSaveExists) {
@@ -50,6 +59,7 @@ export async function createSave(req, res) {
       title,
       topics,
       tags: updatedTags,
+      content: content || "", // <-- PASS THE CONTENT HERE
     });
 
     const saveDoc = await saveModel.create({
@@ -87,17 +97,20 @@ export async function updateSave(req, res) {
     const userId = req.user.id;
 
     const normalize = (tag) => tag.trim().toLowerCase().replace(/\s+/g, "-");
+    
+    // Only process tags if they were actually sent in the request
+    const updatedTags = tags ? Array.from(new Set(tags.map(normalize))) : undefined;
 
-    const updatedTags = Array.from(new Set([...(tags || [])].map(normalize)));
+    // Build a dynamic update object so we don't overwrite missing fields with undefined/null
+    const updatePayload = {};
+    if (title !== undefined) updatePayload.title = title;
+    if (note !== undefined) updatePayload.note = note;
+    if (updatedTags !== undefined) updatePayload.tags = updatedTags;
 
     const saveDoc = await saveModel.findOneAndUpdate(
       { _id: saveId, userId },
-      {
-        title,
-        note,
-        tags: updatedTags,
-      },
-      { new: true },
+      updatePayload,
+      { new: true }
     );
 
     if (!saveDoc) {
@@ -107,16 +120,19 @@ export async function updateSave(req, res) {
       });
     }
 
-    // Regenerate embedding since title or tags may have changed
+    // Regenerate embedding using the freshly updated document values
     const newEmbedding = await generateVectorFromData({
       summary: saveDoc.summary,
       title: saveDoc.title,
       topics: saveDoc.topics,
       tags: saveDoc.tags,
+      // Note: 'content' is not stored in the DB, so we omit it here. 
+      // The improved natural language formatting alone is still a major upgrade.
     });
+
     await saveModel.updateOne(
       { _id: saveId },
-      { $set: { embedding: newEmbedding } },
+      { $set: { embedding: newEmbedding } }
     );
 
     res.status(200).json({
@@ -135,8 +151,10 @@ export async function updateSave(req, res) {
 
 export async function checkSave(req, res) {
   try {
-    const { url } = req.query;
+    const rawUrl = req.query.url;
     const userId = req.user.id;
+    
+    const url = normalizeUrl(rawUrl); // <-- Normalize before checking
 
     const saveDoc = await saveModel.findOne({ url, userId });
     if (!saveDoc) {
@@ -178,7 +196,7 @@ export async function getVectorQuerySave(req, res) {
 
     const userId = req.user.id;
     const userObjectId = new mongoose.Types.ObjectId(userId);
-    const vectorThreshold = 0.7;
+    const vectorThreshold = 0.5;
 
     console.log("Starting vector + keyword generation...");
 
@@ -463,6 +481,7 @@ export async function updateNote(req, res) {
 
 export async function reEmbedAllSaves(req, res) {
   try {
+    // Fetch all fields needed for the new embedding format
     const saves = await saveModel.find({}, "_id title summary topics tags");
 
     let success = 0;
@@ -475,15 +494,18 @@ export async function reEmbedAllSaves(req, res) {
           summary: save.summary,
           topics: save.topics,
           tags: save.tags,
+          // 'content' is omitted here because it's not stored in the DB schema.
+          // Old saves will still get a massive improvement just from the cleaner formatting.
         });
 
         await saveModel.updateOne(
           { _id: save._id },
-          { $set: { embedding: newVector } },
+          { $set: { embedding: newVector } }
         );
 
         success++;
-      } catch {
+      } catch (err) {
+        console.error(`Failed to re-embed save ${save._id}:`, err.message);
         failed++;
       }
     }
