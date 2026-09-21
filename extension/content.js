@@ -5,18 +5,31 @@ let selectedText = "";
 let currentSaveId = null;
 
 // Check if current page is saved in Memora
-async function checkIfSaved() { 
+async function checkIfSaved() {
   try {
-    const res = await fetch(
-      `${API_URL}/api/saves/exists?url=${encodeURIComponent(window.location.href)}`,
-      { credentials: "include" },
-    );
-    const data = await res.json();
-    if (data.exists) {
-      currentSaveId = data.id;
+    const response = await chrome.runtime.sendMessage({
+      type: "CHECK_SAVED",
+      url: window.location.href,
+    });
+
+    console.log("Save check result:", response);
+
+    if (response?.ok && response.exists && response.id) {
+      currentSaveId = response.id;
+
+      console.log(
+        "Current page is saved. Save ID:",
+        currentSaveId,
+      );
+    } else {
+      currentSaveId = null;
+
+      console.log("Current page is not saved.");
     }
-  } catch (err) {
-    // not saved or backend unreachable
+  } catch (error) {
+    currentSaveId = null;
+
+    console.error("Failed to check saved page:", error);
   }
 }
 
@@ -97,35 +110,47 @@ function hideTooltip() {
 
 // Save the highlight
 async function saveHighlight() {
-  if (!selectedText || !currentSaveId) {
+  if (!selectedText) {
+    return;
+  }
+
+  if (!currentSaveId) {
     showFeedback("Save this page first in ShellAI", "error");
     hideTooltip();
     return;
   }
 
   try {
-    // Change tooltip to loading state
     tooltip.innerHTML = `<span>Saving...</span>`;
 
-    const res = await fetch(`${API_URL}/api/highlights/${currentSaveId}`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ highlightedText: selectedText }),
+    const response = await chrome.runtime.sendMessage({
+      type: "SAVE_HIGHLIGHT",
+      saveId: currentSaveId,
+      highlightedText: selectedText,
     });
 
-    if (res.status === 401) {
-      showFeedback("Sign in to ShellAI first", "error"); 
+    console.log("Highlight result:", response);
+
+    if (!response?.ok) {
+      if (response?.status === 401) {
+        showFeedback("Sign in to ShellAI first", "error");
+      } else {
+        showFeedback(
+          response?.data?.message || "Failed to save highlight",
+          "error",
+        );
+      }
+
       resetTooltip();
       return;
     }
 
-    if (!res.ok) throw new Error("Failed");
-
-    showFeedback("Highlight saved ✓", "success"); 
+    showFeedback("Highlight saved ✓", "success");
     resetTooltip();
-  } catch (err) {
-    showFeedback("Failed to save highlight", "error"); 
+  } catch (error) {
+    console.error("Highlight error:", error);
+
+    showFeedback("Failed to save highlight", "error");
     resetTooltip();
   }
 }
