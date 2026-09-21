@@ -62,12 +62,12 @@ export default function Dashboard() {
           <div className="dashboard__empty-icon">◈</div>
 
           <p className="dashboard__empty-title">
-            {isSearching ? "No matches found" : "Nothing saved yet"}
+            {isSearching ? "You haven't saved anything related to this" : "Nothing saved yet"}
           </p>
 
           <p className="dashboard__empty-subtitle">
             {isSearching
-              ? "Try different words."
+              ? "Try saving relevant pages first, or search with different words."
               : "Save anything from the web — articles, videos, tweets, and more."}
           </p>
 

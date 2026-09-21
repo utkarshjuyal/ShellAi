@@ -9,7 +9,7 @@ import {
   deleteSave,
   updateTags,
   updateNote,
-  getVectorQuerySave,
+  getSearchResults,
   reEmbedAllSaves,
 } from "../controllers/saves.controller.js";
 import { authUser } from "../middlewares/auth.middleware.js";
@@ -81,7 +81,7 @@ savesRouter.get(
   authUser,
   readSavesLimiter,
   searchSaveValidator,
-  getVectorQuerySave,
+  getSearchResults,
 );
 
 savesRouter.get(

@@ -6,10 +6,8 @@ import saveModel from "../models/saves.model.js";
 
 // Services
 import {
-  extractSearchKeywords,
   generateSummaryAndTopics,
   generateVectorFromData,
-  generateVectorFromQuery,
 } from "../services/ai.service.js";
 import { scrapeMetatags } from "../services/scraper.service.js";
 import { detectType } from "../services/detector.service.js";
@@ -18,19 +16,10 @@ import { detectType } from "../services/detector.service.js";
 import { getTimeAgo } from "../utils/util.js";
 import mongoose from "mongoose";
 
-function normalizeUrl(url) {
-  if (!url) return url;
-  return url
-    .split('#')[0]          // Remove hash fragment
-    .replace(/\/$/, '');    // Remove trailing slash (except for root domain)
-}
-
 export async function createSave(req, res) {
   try {
-    const { title, url: rawUrl, note, tags } = req.body;
+    const { title, url, note, tags } = req.body;
     const userId = req.user.id;
-    
-    const url = normalizeUrl(rawUrl); // <-- Normalize before saving
 
     const isSaveExists = await saveModel.findOne({ url, userId });
     if (isSaveExists) {
@@ -59,7 +48,6 @@ export async function createSave(req, res) {
       title,
       topics,
       tags: updatedTags,
-      content: content || "", // <-- PASS THE CONTENT HERE
     });
 
     const saveDoc = await saveModel.create({
@@ -97,20 +85,17 @@ export async function updateSave(req, res) {
     const userId = req.user.id;
 
     const normalize = (tag) => tag.trim().toLowerCase().replace(/\s+/g, "-");
-    
-    // Only process tags if they were actually sent in the request
-    const updatedTags = tags ? Array.from(new Set(tags.map(normalize))) : undefined;
 
-    // Build a dynamic update object so we don't overwrite missing fields with undefined/null
-    const updatePayload = {};
-    if (title !== undefined) updatePayload.title = title;
-    if (note !== undefined) updatePayload.note = note;
-    if (updatedTags !== undefined) updatePayload.tags = updatedTags;
+    const updatedTags = Array.from(new Set([...(tags || [])].map(normalize)));
 
     const saveDoc = await saveModel.findOneAndUpdate(
       { _id: saveId, userId },
-      updatePayload,
-      { new: true }
+      {
+        title,
+        note,
+        tags: updatedTags,
+      },
+      { new: true },
     );
 
     if (!saveDoc) {
@@ -120,19 +105,16 @@ export async function updateSave(req, res) {
       });
     }
 
-    // Regenerate embedding using the freshly updated document values
+    // Regenerate embedding since title or tags may have changed
     const newEmbedding = await generateVectorFromData({
       summary: saveDoc.summary,
       title: saveDoc.title,
       topics: saveDoc.topics,
       tags: saveDoc.tags,
-      // Note: 'content' is not stored in the DB, so we omit it here. 
-      // The improved natural language formatting alone is still a major upgrade.
     });
-
     await saveModel.updateOne(
       { _id: saveId },
-      { $set: { embedding: newEmbedding } }
+      { $set: { embedding: newEmbedding } },
     );
 
     res.status(200).json({
@@ -151,10 +133,8 @@ export async function updateSave(req, res) {
 
 export async function checkSave(req, res) {
   try {
-    const rawUrl = req.query.url;
+    const { url } = req.query;
     const userId = req.user.id;
-    
-    const url = normalizeUrl(rawUrl); // <-- Normalize before checking
 
     const saveDoc = await saveModel.findOne({ url, userId });
     if (!saveDoc) {
@@ -183,10 +163,9 @@ export async function checkSave(req, res) {
   }
 }
 
-export async function getVectorQuerySave(req, res) {
+export async function getSearchResults(req, res) {
   try {
     const { query } = req.query;
-    console.log("Query recieved");
 
     if (!query || query.trim() === "") {
       return res
@@ -196,95 +175,119 @@ export async function getVectorQuerySave(req, res) {
 
     const userId = req.user.id;
     const userObjectId = new mongoose.Types.ObjectId(userId);
-    const vectorThreshold = 0.5;
 
-    console.log("Starting vector + keyword generation...");
-
-    const [queryVector, keywords] = await Promise.all([
-      generateVectorFromQuery(query),
-      extractSearchKeywords(query),
-    ]);
-
-    console.log("Vector and keywords ready. Keywords:", keywords);
-
-    const [vectorResults, keywordResults] = await Promise.all([
-      saveModel.aggregate([
-        {
-          $vectorSearch: {
-            index: "vector_index",
-            path: "embedding",
-            queryVector,
-            numCandidates: 100,
-            limit: 10,
-            filter: { userId: userObjectId },
+    const searchResults = await saveModel.aggregate([
+      {
+        $search: {
+          index: "shellai_search",
+          compound: {
+            filter: [
+              {
+                equals: {
+                  path: "userId",
+                  value: userObjectId,
+                },
+              },
+            ],
+            should: [
+              {
+                text: {
+                  query,
+                  path: "title",
+                  score: { boost: { value: 5 } },
+                  fuzzy: {
+                    maxEdits: 1,
+                    prefixLength: 1,
+                  },
+                },
+              },
+              {
+                text: {
+                  query,
+                  path: "tags",
+                  score: { boost: { value: 4 } },
+                  fuzzy: {
+                    maxEdits: 1,
+                    prefixLength: 1,
+                  },
+                },
+              },
+              {
+                text: {
+                  query,
+                  path: "topics",
+                  score: { boost: { value: 3 } },
+                  fuzzy: {
+                    maxEdits: 1,
+                    prefixLength: 1,
+                  },
+                },
+              },
+              {
+                text: {
+                  query,
+                  path: "summary",
+                  score: { boost: { value: 2 } },
+                  fuzzy: {
+                    maxEdits: 1,
+                    prefixLength: 1,
+                  },
+                },
+              },
+              {
+                text: {
+                  query,
+                  path: "note",
+                  score: { boost: { value: 1 } },
+                  fuzzy: {
+                    maxEdits: 1,
+                    prefixLength: 1,
+                  },
+                },
+              },
+              {
+                text: {
+                  query,
+                  path: "url",
+                  score: { boost: { value: 1 } },
+                },
+              },
+            ],
+            minimumShouldMatch: 1,
           },
         },
-        {
-          $project: {
-            title: 1,
-            url: 1,
-            summary: 1,
-            topics: 1,
-            tags: 1,
-            thumbnail: 1,
-            favicon: 1,
-            type: 1,
-            isFavorite: 1,
-            createdAt: 1,
-            score: { $meta: "vectorSearchScore" },
-          },
+      },
+      {
+        $project: {
+          title: 1,
+          url: 1,
+          summary: 1,
+          topics: 1,
+          tags: 1,
+          thumbnail: 1,
+          favicon: 1,
+          type: 1,
+          isFavorite: 1,
+          createdAt: 1,
+          score: { $meta: "searchScore" },
+          matchType: { $literal: "atlas" },
         },
-        { $match: { score: { $gte: vectorThreshold } } },
-      ]),
-
-      keywords.length > 0
-        ? saveModel
-            .find({
-              userId: userObjectId,
-              $or: keywords.flatMap((word) => [
-                { title: { $regex: word, $options: "i" } },
-                { topics: { $regex: word, $options: "i" } },
-                { tags: { $regex: word, $options: "i" } },
-              ]),
-            })
-            .select(
-              "title url summary topics tags thumbnail favicon type isFavorite createdAt",
-            )
-            .lean()
-        : Promise.resolve([]),
+      },
+      {
+        $limit: 10,
+      },
     ]);
-
-    const seen = new Set();
-    const merged = [];
-
-    // Add semantic results first (higher priority, sorted by score)
-    const sortedVectorResults = vectorResults.sort((a, b) => b.score - a.score);
-    for (const doc of sortedVectorResults) {
-      seen.add(doc._id.toString());
-      merged.push({ ...doc, matchType: "semantic" });
-    }
-
-    // Backfill with keyword results (lower priority)
-    for (const doc of keywordResults) {
-      if (!seen.has(doc._id.toString())) {
-        seen.add(doc._id.toString());
-        merged.push({ ...doc, matchType: "keyword", score: 0 });
-      }
-    }
-
-    // Return only top 10 most relevant results
-    const topResults = merged.slice(0, 10);
 
     return res.status(200).json({
       success: true,
-      message: "Fetched similar queries",
-      results: topResults,
+      message: "Fetched search results",
+      results: searchResults,
     });
   } catch (err) {
-    console.error("getVectorQuerySave error:", err); // <-- see exact failure
+    console.error("getSearchResults error:", err);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch similar queries.",
+      message: "Failed to search saves",
       error: err.message,
     });
   }
@@ -481,7 +484,6 @@ export async function updateNote(req, res) {
 
 export async function reEmbedAllSaves(req, res) {
   try {
-    // Fetch all fields needed for the new embedding format
     const saves = await saveModel.find({}, "_id title summary topics tags");
 
     let success = 0;
@@ -494,18 +496,15 @@ export async function reEmbedAllSaves(req, res) {
           summary: save.summary,
           topics: save.topics,
           tags: save.tags,
-          // 'content' is omitted here because it's not stored in the DB schema.
-          // Old saves will still get a massive improvement just from the cleaner formatting.
         });
 
         await saveModel.updateOne(
           { _id: save._id },
-          { $set: { embedding: newVector } }
+          { $set: { embedding: newVector } },
         );
 
         success++;
-      } catch (err) {
-        console.error(`Failed to re-embed save ${save._id}:`, err.message);
+      } catch {
         failed++;
       }
     }
