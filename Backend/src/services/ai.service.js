@@ -1,4 +1,4 @@
-import { ChatMistralAI, MistralAIEmbeddings } from "@langchain/mistralai";
+import { ChatMistralAI } from "@langchain/mistralai";
 import { CohereEmbeddings } from "@langchain/cohere";
 
 const queryEmbeddingModel = new CohereEmbeddings({
@@ -24,8 +24,9 @@ export async function generateSummaryAndTopics({
   keywords,
   url,
 }) {
-  const response = await mistralModel.invoke(
-    `You are an assistant for a knowledge management app.
+  try {
+    const response = await mistralModel.invoke(
+      `You are an assistant for a knowledge management app.
 
     Given the following webpage data:
 
@@ -57,9 +58,8 @@ export async function generateSummaryAndTopics({
       "aiTags": ["tag1", "tag2"] // Optional AI-generated tags to enhance user-provided tags
     }
 `,
-  );
+    );
 
-  try {
     const text = response.content;
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("No JSON found");
@@ -75,8 +75,9 @@ export async function generateSummaryAndTopics({
 }
 
 export async function extractSearchKeywords(query) {
-  const response = await mistralModel.invoke(
-    `Extract the most important search keywords from this query. 
+  try {
+    const response = await mistralModel.invoke(
+      `Extract the most important search keywords from this query. 
     Remove stop words, filler words, and keep only meaningful terms.
     Return ONLY a JSON array of strings, nothing else.
     
@@ -84,9 +85,8 @@ export async function extractSearchKeywords(query) {
     
     Example: "how to make my react app faster" → ["react", "performance", "optimization"]
     Example: "best ways to learn docker" → ["docker", "learning"]`,
-  );
+    );
 
-  try {
     const text = response.content;
     const cleaned = text.replace(/```json|```/g, "").trim();
     return JSON.parse(cleaned);
