@@ -9,123 +9,147 @@ import saveModel from "../models/saves.model.js";
 import userModel from "../models/user.model.js";
 
 // Utils
-import { emailHTML, verifyEmailHTML } from "../utils/util.js";
-import {
-  cookieOptions,
-  verificationExpirationTime,
-} from "../utils/constants.js";
-
-// Services
-import { sendEmail } from "../services/mail.service.js";
+import { cookieOptions } from "../utils/constants.js";
 
 export async function register(req, res) {
-  const { username, email, password } = req.body;
-
-  const isUserAlreadyExists = await userModel.findOne({
-    $or: [{ username }, { email }],
-  });
-  if (isUserAlreadyExists) {
-    return res.status(400).json({
-      success: false,
-      message: "Username or email already exists",
-    });
-  }
-
-  const user = await userModel.create({
-    username,
-    email,
-    password,
-    verificationExpiresAt: verificationExpirationTime,
-  });
-
-  const emailVerificationToken = jwt.sign(
-    {
-      email: user.email,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "15m" },
-  );
-
   try {
-    await sendEmail({
-      to: email,
-      subject: "Welcome to ShellAI!",
-      html: emailHTML(username, emailVerificationToken),
+    const { username, email, password } = req.body;
+
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Username, email and password are required",
+      });
+    }
+
+    const isUserAlreadyExists = await userModel.findOne({
+      $or: [{ username }, { email }],
     });
-  } catch (err) {
-    // User created but email failed, delete the user so they can try again
-    await userModel.findByIdAndDelete(user._id);
+
+    if (isUserAlreadyExists) {
+      return res.status(400).json({
+        success: false,
+        message: "Username or email already exists",
+      });
+    }
+
+    // Create user directly as verified.
+    // No email verification is required.
+    const user = await userModel.create({
+      username,
+      email,
+      password,
+      verified: true,
+      verificationExpiresAt: null,
+    });
+
+    // Automatically log the user in after registration.
+    const token = jwt.sign(
+      {
+        id: user._id,
+        username: user.username,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "7d",
+      },
+    );
+
+    res.cookie("token", token, cookieOptions);
+
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error("Register error:", error);
+
     return res.status(500).json({
       success: false,
-      message: "Failed to send verification email. Please try again.",
+      message: "Failed to register user",
+      error: error.message,
     });
   }
-
-  res.status(201).json({
-    message: "User registered successfully",
-    success: true,
-    user: {
-      id: user._id,
-      username: user.username,
-      email: user.email,
-    },
-  });
 }
+
 
 export async function login(req, res) {
-  const { username, password } = req.body;
+  try {
+    const { username, password } = req.body;
 
-  const user = await userModel.findOne({ username });
-  if (!user) {
-    return res.status(400).json({
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Username and password are required",
+      });
+    }
+
+    const user = await userModel.findOne({ username });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    const isPasswordValid = await user.comparePassword(password);
+
+    if (!isPasswordValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: user._id,
+        username: user.username,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "7d",
+      },
+    );
+
+    res.cookie("token", token, cookieOptions);
+
+    return res.status(200).json({
+      success: true,
+      message: "User logged in successfully",
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+
+    return res.status(500).json({
       success: false,
-      message: "Invalid credentials",
+      message: "Failed to login",
+      error: error.message,
     });
   }
-
-  const isPasswordValid = await user.comparePassword(password);
-  if (!isPasswordValid) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid credentials",
-    });
-  }
-
-  if (user.verified === false) {
-    return res.status(400).json({
-      success: false,
-      message: "Please verify your email before logging in",
-    });
-  }
-
-  const token = jwt.sign(
-    {
-      id: user._id,
-      username: user.username,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" },
-  );
-
-  res.cookie("token", token, cookieOptions);
-  res.status(200).json({
-    success: true,
-    message: "User logged in successfully",
-    user: {
-      id: user._id,
-      username: user.username,
-      email: user.email,
-    },
-  });
 }
+
 
 export async function logout(req, res) {
   res.clearCookie("token", cookieOptions);
-  res.status(200).json({
+
+  return res.status(200).json({
     success: true,
     message: "User logged out successfully",
   });
 }
+
 
 export async function deleteUser(req, res) {
   try {
@@ -140,85 +164,26 @@ export async function deleteUser(req, res) {
     await userModel.findByIdAndDelete(userId);
 
     res.clearCookie("token", cookieOptions);
-    res.status(200).json({
+
+    return res.status(200).json({
       success: true,
       message: "User account deleted successfully",
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Delete user error:", error);
+
+    return res.status(500).json({
       success: false,
       message: "Failed to delete user account",
     });
   }
 }
 
+
 export async function getMe(req, res) {
-  const user = await userModel.findById(req.user.id);
-  if (!user) {
-    return res.status(404).json({
-      success: false,
-      message: "User not found",
-    });
-  }
-
-  res.status(200).json({
-    success: true,
-    user: {
-      id: user._id,
-      username: user.username,
-      email: user.email,
-    },
-  });
-}
-
-export async function verifyEmail(req, res) {
-  const { token } = req.query;
-
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await userModel.findById(req.user.id);
 
-    const user = await userModel.findOne({ email: decoded.email });
-    if (!user) {
-      return res.status(400).json({
-        message: "Invalid token",
-        success: false,
-        err: "User not found",
-      });
-    }
-
-    if (user.verificationExpiresAt < new Date()) {
-      return res.status(400).send(`
-      <h1>Link Expired</h1>
-      <p>Your verification link expired. Please register again.</p>
-    `);
-    }
-
-    user.verified = true;
-    user.verificationExpiresAt = null;
-    await user.save();
-
-    const authToken = jwt.sign(
-      { id: user._id, username: user.username },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" },
-    );
-
-    res.cookie("token", authToken, cookieOptions);
-    return res.redirect(process.env.FRONTEND_URL || "/");
-  } catch (err) {
-    return res.status(400).json({
-      message: "Invalid or expired token",
-      success: false,
-      err: err.message,
-    });
-  }
-}
-
-export async function resendVerificationEmail(req, res) {
-  const { email } = req.body;
-
-  try {
-    const user = await userModel.findOne({ email });
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -226,45 +191,20 @@ export async function resendVerificationEmail(req, res) {
       });
     }
 
-    if (user.verified) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is already verified",
-      });
-    }
-
-    user.verificationExpiresAt = verificationExpirationTime;
-    await user.save();
-
-    const emailVerificationToken = jwt.sign(
-      {
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        username: user.username,
         email: user.email,
       },
-      process.env.JWT_SECRET,
-      { expiresIn: "15m" },
-    );
-
-    try {
-      await sendEmail({
-        to: user.email,
-        subject: "ShellAI - Email Verification",
-        html: emailHTML(user.username, emailVerificationToken),
-      });
-    } catch (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send verification email. Please try again.",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Verification email resent successfully",
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Get me error:", error);
+
+    return res.status(500).json({
       success: false,
-      message: "Failed to resend verification email",
+      message: "Failed to get user",
     });
   }
 }

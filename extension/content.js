@@ -1,35 +1,22 @@
-const API_URL = "http://localhost:3000"; 
+const API_URL = "https://memora-01wh.onrender.com"; 
 
 let tooltip = null;
 let selectedText = "";
+let currentSaveId = null;
 
-// Helper to get clean URL (removes hash fragments which are never sent to the server)
-function getCleanUrl() {
-  return window.location.href.split('#')[0];
-}
-
-// Dynamically check if current page is saved at the time of highlighting
-async function getSaveIdForCurrentUrl() { 
+// Check if current page is saved in Memora
+async function checkIfSaved() { 
   try {
-    const cleanUrl = getCleanUrl();
     const res = await fetch(
-      `${API_URL}/api/saves/exists?url=${encodeURIComponent(cleanUrl)}`,
+      `${API_URL}/api/saves/exists?url=${encodeURIComponent(window.location.href)}`,
       { credentials: "include" },
     );
-    
-    if (res.status === 401) {
-      showFeedback("Please sign in to ShellAI", "error");
-      return null;
-    }
-
     const data = await res.json();
     if (data.exists) {
-      return data.id;
+      currentSaveId = data.id;
     }
-    return null;
   } catch (err) {
-    console.error("Failed to check if saved:", err);
-    return null;
+    // not saved or backend unreachable
   }
 }
 
@@ -42,17 +29,17 @@ function createTooltip() {
     <span class="memora-label">Save highlight</span>
   `;
   el.style.cssText = `
-    position: fixed !important;
-    z-index: 2147483647 !important; /* Max possible z-index to beat website CSS */
+    position: fixed;
+    z-index: 999999;
     background: #1a1815;
     color: #ede9e3;
-    padding: 8px 14px;
+    padding: 6px 12px;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 12px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-weight: 500;
     cursor: pointer;
-    display: none; /* Hidden by default */
+    display: flex;
     align-items: center;
     gap: 6px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
@@ -78,16 +65,21 @@ function showHighlightTooltip(text, x, y) {
 
   selectedText = text;
   tooltip.style.display = "flex";
-  
-  // Force browser reflow to ensure display: flex is applied before opacity transition
-  void tooltip.offsetWidth; 
   tooltip.style.opacity = "1";
 
   const tooltipWidth = 140;
-  
-  // Position above selection, but flip below if too close to top of screen
-  const top = y - 50 < 10 ? y + 20 : y - 50;
-  const left = Math.min(Math.max(10, x - tooltipWidth / 2), window.innerWidth - tooltipWidth - 10);
+  const tooltipHeight = 36;
+
+  // Position above selection, but flip below if too close to top
+  const top =
+    y - 44 < 10
+      ? y + 16 // show below if near top of screen
+      : y - 44; // show above normally
+
+  const left = Math.min(
+    Math.max(10, x - tooltipWidth / 2),
+    window.innerWidth - tooltipWidth - 10,
+  );
 
   tooltip.style.left = `${left}px`;
   tooltip.style.top = `${top}px`;
@@ -105,26 +97,15 @@ function hideTooltip() {
 
 // Save the highlight
 async function saveHighlight() {
-  if (!selectedText) {
-    showFeedback("No text selected", "error");
-    hideTooltip();
-    return;
-  }
-
-  // Show checking state immediately
-  if (tooltip) tooltip.innerHTML = `<span>Checking...</span>`;
-
-  // Dynamically fetch the save ID at the time of highlighting
-  const currentSaveId = await getSaveIdForCurrentUrl();
-  
-  if (!currentSaveId) {
-    showFeedback("Save this page first in ShellAI", "error");
+  if (!selectedText || !currentSaveId) {
+    showFeedback("Save this page first in Memora", "error");
     hideTooltip();
     return;
   }
 
   try {
-    if (tooltip) tooltip.innerHTML = `<span>Saving...</span>`;
+    // Change tooltip to loading state
+    tooltip.innerHTML = `<span>Saving...</span>`;
 
     const res = await fetch(`${API_URL}/api/highlights/${currentSaveId}`, {
       method: "POST",
@@ -134,7 +115,7 @@ async function saveHighlight() {
     });
 
     if (res.status === 401) {
-      showFeedback("Sign in to ShellAI first", "error"); 
+      showFeedback("Sign in to Memora first", "error"); 
       resetTooltip();
       return;
     }
@@ -142,9 +123,8 @@ async function saveHighlight() {
     if (!res.ok) throw new Error("Failed");
 
     showFeedback("Highlight saved ✓", "success"); 
-     resetTooltip();
+    resetTooltip();
   } catch (err) {
-    console.error("Highlight save error:", err);
     showFeedback("Failed to save highlight", "error"); 
     resetTooltip();
   }
@@ -163,29 +143,25 @@ function resetTooltip() {
 
 // Feedback toast
 function showFeedback(message, type) {
-  // Remove existing toasts to prevent stacking
-  const existing = document.querySelector(".memora-toast");
-  if (existing) existing.remove();
-
   const toast = document.createElement("div");
-  toast.className = "memora-toast";
   toast.textContent = message;
   toast.style.cssText = `
-    position: fixed !important;
+    position: fixed;
     bottom: 24px;
     right: 24px;
-    z-index: 2147483647 !important;
+    z-index: 999999;
     background: ${type === "success" ? "#1a7a45" : "#c0392b"};
     color: #fff;
-    padding: 12px 18px;
+    padding: 10px 16px;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 12px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-weight: 500;
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     animation: memora-fade-in 0.2s ease;
   `;
 
+  // Inject keyframe
   if (!document.getElementById("memora-styles")) {
     const style = document.createElement("style");
     style.id = "memora-styles";
@@ -206,13 +182,12 @@ function showFeedback(message, type) {
 document.addEventListener("mouseup", (e) => {
   setTimeout(() => {
     const selected = window.getSelection().toString().trim();
-    // CHANGED: Lowered from > 10 to > 3 so short selections still trigger it for testing
-    if (selected.length > 3) {
+    if (selected.length > 10) {
       showHighlightTooltip(selected, e.clientX, e.clientY);
     } else {
       hideTooltip();
     }
-  }, 10);
+  }, 10); // slight delay so selection is complete
 });
 
 // Hide tooltip when clicking elsewhere
@@ -221,3 +196,6 @@ document.addEventListener("mousedown", (e) => {
     hideTooltip();
   }
 });
+
+// Init
+checkIfSaved();
