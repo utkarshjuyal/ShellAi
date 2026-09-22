@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Memora</title>
+    <title>ShellAI</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <!-- SCREEN 1: Default save view -->
     <div id="screen-save">
       <div class="header">
-        <span class="logo">Memora</span>
+        <span class="logo">ShellAI</span>
         <a id="open-app" href="#" title="Open Memora">↗</a>
       </div>
 
@@ -37,17 +37,17 @@
         <input type="text" id="tags" placeholder="e.g. design, research" />
 
         <div id="error-msg" class="error-msg hidden">
-          Could not connect to Memora. Is your backend running?
+          Could not connect to ShellAI. Is your backend running?
         </div>
 
-        <button id="save-btn">Save to Memora</button>
+        <button id="save-btn">Save to ShellAI</button>
       </div>
     </div>
 
     <!-- SCREEN 2: Success view -->
     <div id="screen-saved" class="hidden">
       <div class="header">
-        <span class="logo">Memora</span>
+        <span class="logo">ShellAI</span>
         <a id="open-app-2" href="#" title="Open Memora">↗</a>
       </div>
 
@@ -55,7 +55,7 @@
         <div class="success-badge">Saved!</div>
         <p id="auto-tags-text" class="muted"></p>
         <a id="view-item-btn" href="#" class="secondary-btn"
-          >View in Memora ↗</a
+          >View in ShellAI ↗</a
         >
       </div>
     </div>
@@ -63,7 +63,7 @@
     <!-- SCREEN 3: Already saved view -->
     <div id="screen-exists" class="hidden">
       <div class="header">
-        <span class="logo">Memora</span>
+        <span class="logo">ShellAI</span>
         <a id="open-app-3" href="#" title="Open Memora">↗</a>
       </div>
 
@@ -81,14 +81,14 @@
     <!-- SCREEN 4: Not logged in -->
     <div id="screen-login" class="hidden">
       <div class="header">
-        <span class="logo">Memora</span>
+        <span class="logo">ShellAI</span>
       </div>
       <div class="center-content">
         <div class="login-icon">🔐</div>
         <p class="login-title">You're not logged in</p>
-        <p class="muted">Sign in to Memora to start saving pages.</p>
+        <p class="muted">Sign in to ShellAI to start saving pages.</p>
         <a id="open-login-btn" href="#" class="secondary-btn login-btn">
-          Sign in to Memora ↗
+          Sign in to ShellAI ↗
         </a>
         <p class="muted login-hint">Come back here after signing in.</p>
       </div>
