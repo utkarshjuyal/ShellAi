@@ -4,7 +4,7 @@ let tooltip = null;
 let selectedText = "";
 let currentSaveId = null;
 
-// Check if current page is saved in Memora
+// Check if current page is saved in ShellAI
 async function checkIfSaved() { 
   try {
     const res = await fetch(
