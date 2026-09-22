@@ -131,7 +131,7 @@ document.getElementById("save-btn").addEventListener("click", async () => {
     showScreen("saved");
   } catch (err) {
     btn.disabled = false;
-    btn.textContent = "Save to Memora";
+    btn.textContent = "Save to ShellAI";
     document.getElementById("error-msg").classList.remove("hidden");
   } finally {
     update = false;
